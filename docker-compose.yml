@@ -1,0 +1,16 @@
+services:
+  mempalace:
+    build: .
+    command: >
+      --stdio "python -m mempalace.mcp_server"
+      --outputTransport streamableHttp
+      --port 8377
+      --streamableHttpPath /mcp
+      --cors
+    environment:
+      - MEMPALACE_PALACE_PATH=/root/.mempalace/palace
+    ports:
+      - "127.0.0.1:8377:8377"
+    volumes:
+      - ~/.mempalace:/root/.mempalace
+    restart: unless-stopped
