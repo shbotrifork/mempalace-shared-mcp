@@ -2,23 +2,6 @@
 
 Run a single [mempalace](https://github.com/milla-jovovich/mempalace) instance as a network MCP service so **every** Claude Code session shares the same AI memory — whether on the host, in WSL, or inside Docker containers.
 
-## Quick start
-
-```bash
-# Clone and enter
-git clone <this-repo>
-cd mempalace-shared-mcp
-
-# Run setup (installs CLI, copies hooks, builds Docker, configures Claude Code)
-bash setup.sh
-
-# Mine your first project
-mempalace init ~/projects/my-app
-mempalace mine ~/projects/my-app
-
-# Restart Claude Code — mempalace tools are now available
-```
-
 ## Architecture
 
 ```
@@ -38,65 +21,58 @@ mempalace mine ~/projects/my-app
      localhost       localhost    host.docker.internal
 ```
 
-One process owns the ChromaDB files. All clients connect over HTTP. No lock contention, no sync needed.
+The Docker service runs on the host machine. All environments connect to it over HTTP.
 
-## Prerequisites
+## Setup
 
-- Docker and Docker Compose
-- Python >= 3.9 with `pip` (for the mempalace CLI — used for mining only)
-- Claude Code
-
-## Step-by-step setup
-
-### 1. Install mempalace CLI
+### Host machine (required — run this first)
 
 ```bash
-pip install mempalace==3.0.0
+git clone https://github.com/shbotrifork/mempalace-shared-mcp.git
+cd mempalace-shared-mcp
+bash setup-host.sh
 ```
 
-### 2. Initialize and mine your projects
+This builds the Docker service, installs the mempalace CLI, copies auto-save hooks, and configures Claude Code. One script, fully set up.
 
-Mining ingests project files into the palace so they're searchable via semantic search.
+Then mine your projects:
 
 ```bash
 mempalace init ~/projects/my-app
 mempalace mine ~/projects/my-app
 ```
 
-For conversation exports (Claude, ChatGPT, Slack):
+Restart Claude Code — 19 mempalace tools are now available.
+
+### WSL (optional)
+
+If you run Claude Code inside WSL, run the client setup from within WSL:
 
 ```bash
-mempalace mine ~/chats/ --mode convos
+cd /path/to/mempalace-shared-mcp    # or clone it inside WSL
+bash client/setup-wsl.sh
 ```
 
-Verify:
+This installs the mempalace CLI (for mining WSL-local projects), copies hooks, and configures Claude Code inside WSL. It does **not** start Docker — the host handles that.
+
+### Docker containers (optional)
+
+See [client/setup-container.md](client/setup-container.md) for instructions on connecting Claude Code sessions running inside Docker containers.
+
+## Mining projects
+
+Mining ingests project files into the palace so they're searchable via semantic search.
 
 ```bash
-mempalace status
+mempalace init ~/projects/my-app       # detect rooms from folder structure
+mempalace mine ~/projects/my-app       # mine project files
+mempalace mine ~/chats/ --mode convos  # mine conversation exports (Claude, ChatGPT, Slack)
+mempalace status                       # verify what's been filed
 ```
 
-> **Tip:** You only need to mine on the host. The Docker container reads the same palace data via bind mount. No restart needed after mining new projects.
+The Docker service reads palace data via bind mount — no restart needed after mining.
 
-### 3. Start the Docker service
-
-Mempalace's MCP server is stdio-only. The Docker container runs [supergateway](https://github.com/supercorp-ai/supergateway) to expose it as a streamable-http endpoint.
-
-```bash
-docker compose up -d
-```
-
-Verify:
-
-```bash
-curl -s http://localhost:8377/mcp -X POST \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json, text/event-stream" \
-  -d '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0.1"}}}'
-```
-
-Expected: `event: message` followed by JSON containing `"serverInfo":{"name":"mempalace","version":"2.0.0"}`.
-
-Manage:
+## Managing the Docker service
 
 ```bash
 docker compose logs -f      # watch logs
@@ -105,102 +81,16 @@ docker compose down         # stop (won't auto-restart until you `up -d` again)
 docker compose stop         # pause (will auto-restart when Docker starts)
 ```
 
-The `restart: unless-stopped` policy means the container automatically starts with Docker. Only `docker compose down` prevents auto-restart.
+The `restart: unless-stopped` policy means the container starts automatically with Docker. Only `docker compose down` prevents auto-restart.
 
-> **Note:** The `MEMPALACE_PALACE_PATH` env var in `docker-compose.yml` overrides the config file's palace path, which may contain a host-specific path (e.g. Windows `C:\Users\...`). This ensures the container always uses the Linux mount path.
->
-> On Windows, if `~` doesn't resolve in the volume mount, replace `~/.mempalace` with `${USERPROFILE}/.mempalace`.
+## Auto-save hooks
 
-### 4. Connect Claude Code
+The setup scripts install two Claude Code hooks:
 
-**Global (all projects — recommended):**
+- **Stop hook** — saves session context every 15 human messages
+- **PreCompact hook** — emergency save before context compaction
 
-```bash
-claude mcp add --transport http --scope user mempalace http://localhost:8377/mcp
-```
-
-Or manually add to `~/.claude.json` under the top-level `mcpServers` key:
-
-```json
-{
-  "mcpServers": {
-    "mempalace": {
-      "type": "http",
-      "url": "http://localhost:8377/mcp"
-    }
-  }
-}
-```
-
-### 5. Connect from WSL
-
-WSL2 shares Docker Desktop's network, so `localhost:8377` works directly. Use the same configuration as step 4.
-
-If `localhost` doesn't resolve (older WSL2 setups), find the host IP:
-
-```bash
-cat /etc/resolv.conf | grep nameserver | awk '{print $2}'
-```
-
-### 6. Connect from Docker containers
-
-Docker containers can't use `localhost` to reach the host machine. Use `host.docker.internal` instead.
-
-**Docker Desktop (Windows/Mac):** `host.docker.internal` resolves automatically.
-
-**Docker on Linux:** Add the mapping explicitly:
-
-```yaml
-services:
-  my-service:
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-```
-
-MCP config inside the container:
-
-```json
-{
-  "mcpServers": {
-    "mempalace": {
-      "type": "http",
-      "url": "http://host.docker.internal:8377/mcp"
-    }
-  }
-}
-```
-
-To make this configurable via environment variable, use `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "mempalace": {
-      "type": "http",
-      "url": "${MEMPALACE_URL:-http://host.docker.internal:8377}/mcp"
-    }
-  }
-}
-```
-
-If the container uses `network_mode: host`, it shares the host's network stack and can use `localhost:8377` directly.
-
-## Auto-save hooks (optional)
-
-The `hooks/` directory contains scripts that automatically save session context to the palace:
-
-- **`mempal_save_hook.sh`** — saves every N human messages (default: 15)
-- **`mempal_precompact_hook.sh`** — emergency save before context compaction
-
-Install:
-
-```bash
-mkdir -p ~/.mempalace/hooks
-cp hooks/*.sh ~/.mempalace/hooks/
-chmod +x ~/.mempalace/hooks/*.sh
-```
-
-Add to Claude Code settings (`~/.claude/settings.json` or `settings.local.json`):
+To activate them, add to your Claude Code settings (`~/.claude/settings.json`):
 
 ```json
 {
@@ -265,10 +155,9 @@ Add to Claude Code settings (`~/.claude/settings.json` or `settings.local.json`)
 
 ## Quick reference
 
-| Environment | MCP URL |
-|---|---|
-| Host machine | `http://localhost:8377/mcp` |
-| WSL2 | `http://localhost:8377/mcp` |
-| Docker container (Desktop) | `http://host.docker.internal:8377/mcp` |
-| Docker container (Linux) | `http://host.docker.internal:8377/mcp` (with `extra_hosts`) |
-| Docker container (`network_mode: host`) | `http://localhost:8377/mcp` |
+| Environment | MCP URL | Setup |
+|---|---|---|
+| Host machine | `http://localhost:8377/mcp` | `bash setup-host.sh` |
+| WSL2 | `http://localhost:8377/mcp` | `bash client/setup-wsl.sh` |
+| Docker container (Desktop) | `http://host.docker.internal:8377/mcp` | See `client/setup-container.md` |
+| Docker container (Linux) | `http://host.docker.internal:8377/mcp` (with `extra_hosts`) | See `client/setup-container.md` |
