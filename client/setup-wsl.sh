@@ -15,14 +15,13 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
-HOOKS_DIR="$HOME/.mempalace/hooks"
 MCP_URL="http://localhost:8377/mcp"
 
 echo "=== MemPalace WSL Client Setup ==="
 echo ""
 
 # Step 1: Verify the host service is reachable
-echo "[1/4] Checking host MCP service..."
+echo "[1/3] Checking host MCP service..."
 RESPONSE=$(curl -s "$MCP_URL" -X POST \
   -H "Content-Type: application/json" \
   -H "Accept: application/json, text/event-stream" \
@@ -38,22 +37,12 @@ fi
 echo ""
 
 # Step 2: Install mempalace CLI (for mining WSL-local projects)
-echo "[2/4] Installing mempalace CLI..."
-pip install mempalace==3.0.0 2>&1 | tail -1
+echo "[2/3] Installing mempalace CLI..."
+pip install 'mempalace' 2>&1 | tail -1
 echo ""
 
-# Step 3: Copy hooks
-echo "[3/4] Installing hooks to $HOOKS_DIR..."
-mkdir -p "$HOOKS_DIR"
-cp "$REPO_DIR/hooks/mempal_save_hook.sh" "$HOOKS_DIR/"
-cp "$REPO_DIR/hooks/mempal_precompact_hook.sh" "$HOOKS_DIR/"
-chmod +x "$HOOKS_DIR/mempal_save_hook.sh" "$HOOKS_DIR/mempal_precompact_hook.sh"
-echo "  Copied mempal_save_hook.sh"
-echo "  Copied mempal_precompact_hook.sh"
-echo ""
-
-# Step 4: Add MCP to Claude Code
-echo "[4/4] Adding mempalace MCP to Claude Code (global)..."
+# Step 3: Add MCP to Claude Code
+echo "[3/3] Adding mempalace MCP to Claude Code (global)..."
 if command -v claude &> /dev/null; then
   claude mcp add --transport http --scope user mempalace "$MCP_URL" 2>&1 || echo "  (already configured or manual setup needed — see README)"
 else

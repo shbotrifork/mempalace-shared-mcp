@@ -5,41 +5,29 @@
 #
 # This script:
 # 1. Installs mempalace CLI (for mining)
-# 2. Copies hooks to ~/.mempalace/hooks/
-# 3. Builds and starts the Docker service
-# 4. Adds mempalace MCP to Claude Code (global)
-# 5. Verifies everything works
+# 2. Builds and starts the Docker service
+# 3. Adds mempalace MCP to Claude Code (global)
+# 4. Verifies everything works
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HOOKS_DIR="$HOME/.mempalace/hooks"
 
 echo "=== MemPalace Shared MCP Setup ==="
 echo ""
 
 # Step 1: Install mempalace CLI
-echo "[1/5] Installing mempalace CLI..."
-pip install mempalace==3.0.0 2>&1 | tail -1
+echo "[1/4] Installing mempalace CLI..."
+pip install 'mempalace' 2>&1 | tail -1
 echo ""
 
-# Step 2: Copy hooks
-echo "[2/5] Installing hooks to $HOOKS_DIR..."
-mkdir -p "$HOOKS_DIR"
-cp "$SCRIPT_DIR/hooks/mempal_save_hook.sh" "$HOOKS_DIR/"
-cp "$SCRIPT_DIR/hooks/mempal_precompact_hook.sh" "$HOOKS_DIR/"
-chmod +x "$HOOKS_DIR/mempal_save_hook.sh" "$HOOKS_DIR/mempal_precompact_hook.sh"
-echo "  Copied mempal_save_hook.sh"
-echo "  Copied mempal_precompact_hook.sh"
-echo ""
-
-# Step 3: Build and start Docker service
-echo "[3/5] Building and starting Docker service..."
+# Step 2: Build and start Docker service
+echo "[2/4] Building and starting Docker service..."
 docker compose -f "$SCRIPT_DIR/docker-compose.yml" up -d --build 2>&1 | tail -3
 echo ""
 
-# Step 4: Add MCP to Claude Code
-echo "[4/5] Adding mempalace MCP to Claude Code (global)..."
+# Step 3: Add MCP to Claude Code
+echo "[3/4] Adding mempalace MCP to Claude Code (global)..."
 if command -v claude &> /dev/null; then
   claude mcp add --transport http --scope user mempalace http://localhost:8377/mcp 2>&1 || echo "  (already configured or manual setup needed — see README)"
 else
@@ -48,8 +36,8 @@ else
 fi
 echo ""
 
-# Step 5: Verify
-echo "[5/5] Verifying..."
+# Step 4: Verify
+echo "[4/4] Verifying..."
 sleep 3
 RESPONSE=$(curl -s http://localhost:8377/mcp -X POST \
   -H "Content-Type: application/json" \
