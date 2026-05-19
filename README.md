@@ -33,7 +33,7 @@ cd mempalace-shared-mcp
 bash setup-host.sh
 ```
 
-This builds the Docker service, installs the mempalace CLI, copies auto-save hooks, and configures Claude Code. One script, fully set up.
+This builds the Docker service, installs the mempalace CLI, and configures Claude Code. One script, fully set up.
 
 Then mine your projects:
 
@@ -42,7 +42,7 @@ mempalace init ~/projects/my-app
 mempalace mine ~/projects/my-app
 ```
 
-Restart Claude Code — 19 mempalace tools are now available.
+Restart Claude Code — 30 mempalace tools are now available.
 
 ### WSL (optional)
 
@@ -53,7 +53,7 @@ cd /path/to/mempalace-shared-mcp    # or clone it inside WSL
 bash client/setup-wsl.sh
 ```
 
-This installs the mempalace CLI (for mining WSL-local projects), copies hooks, and configures Claude Code inside WSL. It does **not** start Docker — the host handles that.
+This installs the mempalace CLI (for mining WSL-local projects) and configures Claude Code inside WSL. It does **not** start Docker — the host handles that.
 
 ### Docker containers (optional)
 
@@ -85,7 +85,7 @@ The `restart: unless-stopped` policy means the container starts automatically wi
 
 ## Auto-save hooks
 
-The setup scripts install two Claude Code hooks:
+mempalace ships two Claude Code hooks via its Python entrypoint:
 
 - **Stop hook** — saves session context every 15 human messages
 - **PreCompact hook** — emergency save before context compaction
@@ -97,11 +97,10 @@ To activate them, add to your Claude Code settings (`~/.claude/settings.json`):
   "hooks": {
     "Stop": [
       {
-        "matcher": "*",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.mempalace/hooks/mempal_save_hook.sh\"",
+            "command": "python -m mempalace hook run --hook stop --harness claude-code",
             "timeout": 30
           }
         ]
@@ -112,7 +111,7 @@ To activate them, add to your Claude Code settings (`~/.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"$HOME/.mempalace/hooks/mempal_precompact_hook.sh\"",
+            "command": "python -m mempalace hook run --hook precompact --harness claude-code",
             "timeout": 30
           }
         ]
@@ -122,16 +121,32 @@ To activate them, add to your Claude Code settings (`~/.claude/settings.json`):
 }
 ```
 
-> **Note:** The hook scripts use `python3`. On Windows, ensure `python3` resolves correctly (create a shim or alias to your Python install).
+Notes:
 
-## Available MCP tools (19)
+- **Silent mode by default** (since v3.3.0): saves happen via the Python API instead of asking Claude to write in the chat, so hook fires cost zero tokens.
+- **Desktop notifications:** opt in via the `mempalace_hook_settings` MCP tool (`desktop_toast: true`) or by editing `~/.mempalace/config.json` directly:
+
+  ```json
+  {
+    "hooks": {
+      "silent_save": true,
+      "desktop_toast": false
+    }
+  }
+  ```
+
+  Toasts use `notify-send`. On Windows, install a shim — e.g. a bash wrapper that calls PowerShell's `New-BurntToastNotification`.
+- The `Stop` and `PreCompact` event types do **not** support a `matcher` field (it's silently ignored), so omit it.
+
+## Available MCP tools (30)
 
 | Category | Tools |
 |---|---|
-| **Palace read** | `mempalace_status`, `mempalace_list_wings`, `mempalace_list_rooms`, `mempalace_get_taxonomy`, `mempalace_search`, `mempalace_check_duplicate` |
-| **Palace write** | `mempalace_add_drawer`, `mempalace_delete_drawer` |
+| **Palace read** | `mempalace_status`, `mempalace_list_wings`, `mempalace_list_rooms`, `mempalace_get_taxonomy`, `mempalace_search`, `mempalace_check_duplicate`, `mempalace_list_drawers`, `mempalace_get_drawer` |
+| **Palace write** | `mempalace_add_drawer`, `mempalace_update_drawer`, `mempalace_delete_drawer`, `mempalace_sync` |
 | **Knowledge graph** | `mempalace_kg_query`, `mempalace_kg_add`, `mempalace_kg_invalidate`, `mempalace_kg_timeline`, `mempalace_kg_stats` |
-| **Navigation** | `mempalace_traverse`, `mempalace_find_tunnels`, `mempalace_graph_stats` |
+| **Navigation / tunnels** | `mempalace_traverse`, `mempalace_find_tunnels`, `mempalace_graph_stats`, `mempalace_create_tunnel`, `mempalace_list_tunnels`, `mempalace_delete_tunnel`, `mempalace_follow_tunnels` |
+| **Hooks / session** | `mempalace_hook_settings`, `mempalace_memories_filed_away`, `mempalace_reconnect` |
 | **Agent diary** | `mempalace_diary_write`, `mempalace_diary_read` |
 | **Reference** | `mempalace_get_aaak_spec` |
 
@@ -139,9 +154,7 @@ To activate them, add to your Claude Code settings (`~/.claude/settings.json`):
 
 | Issue | Details |
 |---|---|
-| **Very new project** | Released April 2026. Pin your version: `pip install mempalace==3.0.0` |
 | **ChromaDB version pinning** | Version conflicts possible if other tools pin chromadb differently. The Docker container isolates this. |
-| **Shell injection in hooks** | [Issue #110](https://github.com/milla-jovovich/mempalace/issues/110) — be cautious with auto-save hooks |
 | **macOS ARM64 segfault** | [Issue #74](https://github.com/milla-jovovich/mempalace/issues/74) — affects macOS only |
 | **Concurrent writes** | Supergateway serializes access (single stdio pipe), so concurrent MCP calls queue. Safe but may add latency under heavy use. |
 
@@ -149,7 +162,7 @@ To activate them, add to your Claude Code settings (`~/.claude/settings.json`):
 
 | Platform | Notes |
 |---|---|
-| **Windows (Git Bash)** | Set `MSYS_NO_PATHCONV=1` before commands that use `/mcp` paths. Set `PYTHONIOENCODING=utf-8` for mempalace CLI commands. `python3` may need a shim. |
+| **Windows (Git Bash)** | Set `MSYS_NO_PATHCONV=1` before commands that use `/mcp` paths. Set `PYTHONIOENCODING=utf-8` for mempalace CLI commands. |
 | **macOS** | Works out of the box. ARM64 users: check issue #74 if using mempalace CLI directly (Docker container is x86 and unaffected). |
 | **Linux** | Works out of the box. Use `extra_hosts` for `host.docker.internal` if not on Docker Desktop. |
 
